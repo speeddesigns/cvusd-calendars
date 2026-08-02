@@ -60,6 +60,13 @@ fieldset { margin: 0; padding: 0; border: 0; }
 .segmented-control button { padding: 11px 5px; border: 0; border-left: 1px solid var(--line); background: var(--white); color: var(--ink-soft); cursor: pointer; font-size: .75rem; }
 .segmented-control button:first-child { border-left: 0; }
 .segmented-control button.active { background: var(--ink); color: var(--paper); }
+.level-picker { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+.level-picker button { min-height: 42px; padding: 7px 8px; display: flex; align-items: center; justify-content: space-between; gap: 7px; border: 1px solid var(--line); border-radius: 3px; background: var(--white); color: var(--ink-soft); cursor: pointer; text-align: left; }
+.level-picker button:hover { border-color: var(--blue); }
+.level-picker button.active { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+.level-picker button span { font-size: .66rem; font-weight: 750; line-height: 1.2; }
+.level-picker button small { min-width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: var(--paper); color: var(--ink-soft); font-size: .56rem; font-weight: 800; }
+.level-picker button.active small { background: var(--yellow); color: var(--ink); }
 .weekday-picker { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .weekday-picker button { min-height: 37px; padding: 7px 4px; border: 1px solid var(--line); border-radius: 3px; background: var(--white); color: var(--ink-soft); cursor: pointer; font-size: .7rem; font-weight: 700; }
 .weekday-picker button:hover { border-color: var(--blue); }

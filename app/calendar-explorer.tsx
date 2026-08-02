@@ -59,6 +59,33 @@ const WEEKDAYS = [
   { value: 5, short: "Fri", label: "Friday" },
   { value: 6, short: "Sat", label: "Saturday" },
 ];
+const SCHOOL_LEVEL_BY_ORGANIZATION: Record<string, string> = {
+  "Alma State Preschool": "Early learning",
+  "Castro Valley Elementary School": "Elementary",
+  "Chabot Elementary School": "Elementary",
+  "Independent Elementary School": "Elementary",
+  "Jensen Ranch Elementary School": "Elementary",
+  "Marshall Elementary School": "Elementary",
+  "Palomares Elementary School": "Elementary",
+  "Proctor Elementary School": "Elementary",
+  "Stanton Elementary School": "Elementary",
+  "Vannoy Elementary School": "Elementary",
+  "Canyon Middle School": "Middle school",
+  "Creekside Middle School": "Middle school",
+  "Castro Valley High School": "High school",
+  "Redwood High School": "High school",
+  "Castro Valley Virtual Academy 9-12": "High school",
+  "Castro Valley Adult and Career Education": "Adult & transition",
+  "Roy Johnson Adult Transition": "Adult & transition",
+};
+const SCHOOL_LEVEL_ORDER = [
+  "Districtwide",
+  "Early learning",
+  "Elementary",
+  "Middle school",
+  "High school",
+  "Adult & transition",
+];
 
 function Icon({ name }: { name: "arrow" | "calendar" | "clock" | "map" | "search" | "x" }) {
   const paths = {
@@ -141,6 +168,13 @@ function eventOrganizations(event: CalendarEvent) {
   return [...new Set(event.published_via.map((item) => item.organization))];
 }
 
+function eventSchoolLevels(event: CalendarEvent) {
+  const organizationLevels = eventOrganizations(event)
+    .map((organization) => SCHOOL_LEVEL_BY_ORGANIZATION[organization])
+    .filter((level): level is string => Boolean(level));
+  return organizationLevels.length > 0 ? [...new Set(organizationLevels)] : ["Districtwide"];
+}
+
 function EventDetails({ event, onClose }: { event: CalendarEvent; onClose: () => void }) {
   useEffect(() => {
     const closeOnEscape = (keyEvent: KeyboardEvent) => {
@@ -192,6 +226,7 @@ export function CalendarExplorer() {
   const [query, setQuery] = useState("");
   const [month, setMonth] = useState("all");
   const [organization, setOrganization] = useState("all");
+  const [schoolLevels, setSchoolLevels] = useState<string[]>([]);
   const [timing, setTiming] = useState("all");
   const [weekdays, setWeekdays] = useState<number[]>([]);
   const [timeStart, setTimeStart] = useState(0);
@@ -225,6 +260,19 @@ export function CalendarExplorer() {
     return [...new Set(dataset.events.map((event) => event.source_calendar.feed_source))].sort();
   }, [dataset]);
 
+  const schoolLevelOptions = useMemo(() => {
+    if (!dataset) return [];
+    const counts = dataset.events.reduce<Record<string, number>>((result, event) => {
+      eventSchoolLevels(event).forEach((level) => {
+        result[level] = (result[level] ?? 0) + 1;
+      });
+      return result;
+    }, {});
+    return SCHOOL_LEVEL_ORDER
+      .filter((level) => counts[level] > 0)
+      .map((level) => ({ level, count: counts[level] }));
+  }, [dataset]);
+
   const filteredEvents = useMemo(() => {
     if (!dataset) return [];
     const normalizedQuery = query.trim().toLocaleLowerCase();
@@ -238,6 +286,7 @@ export function CalendarExplorer() {
       ].join(" ").toLocaleLowerCase().includes(normalizedQuery);
       const matchesMonth = month === "all" || monthKey(event) === month;
       const matchesOrganization = organization === "all" || eventOrganizations(event).includes(organization);
+      const matchesSchoolLevel = schoolLevels.length === 0 || eventSchoolLevels(event).some((level) => schoolLevels.includes(level));
       const matchesWeekday = weekdays.length === 0 || weekdays.includes(localDate(dateKey(event)).getDay());
       const matchesTiming = timing === "all" || (timing === "all-day" ? event.all_day : !event.all_day);
       const startMinutes = eventStartMinutes(event);
@@ -246,11 +295,11 @@ export function CalendarExplorer() {
         startMinutes !== null && startMinutes >= timeStart && startMinutes <= timeEnd
       );
       const matchesSource = source === "all" || event.source_calendar.feed_source === source;
-      return matchesSearch && matchesMonth && matchesOrganization && matchesWeekday && matchesTiming && matchesTimeRange && matchesSource;
+      return matchesSearch && matchesMonth && matchesOrganization && matchesSchoolLevel && matchesWeekday && matchesTiming && matchesTimeRange && matchesSource;
     });
-  }, [dataset, month, organization, query, source, timeEnd, timeStart, timing, weekdays]);
+  }, [dataset, month, organization, query, schoolLevels, source, timeEnd, timeStart, timing, weekdays]);
 
-  const filterKey = `${query}\u0000${month}\u0000${organization}\u0000${timing}\u0000${weekdays.join(",")}\u0000${timeStart}\u0000${timeEnd}\u0000${source}`;
+  const filterKey = `${query}\u0000${month}\u0000${organization}\u0000${schoolLevels.join(",")}\u0000${timing}\u0000${weekdays.join(",")}\u0000${timeStart}\u0000${timeEnd}\u0000${source}`;
   const visibleCount = pagination.key === filterKey ? pagination.count : PAGE_SIZE;
   const visibleEvents = filteredEvents.slice(0, visibleCount);
   const eventGroups = useMemo(() => {
@@ -265,6 +314,7 @@ export function CalendarExplorer() {
     setQuery("");
     setMonth("all");
     setOrganization("all");
+    setSchoolLevels([]);
     setTiming("all");
     setWeekdays([]);
     setTimeStart(0);
@@ -276,6 +326,12 @@ export function CalendarExplorer() {
     setWeekdays((current) => current.includes(value)
       ? current.filter((day) => day !== value)
       : [...current, value].sort());
+  };
+
+  const toggleSchoolLevel = (value: string) => {
+    setSchoolLevels((current) => current.includes(value)
+      ? current.filter((level) => level !== value)
+      : [...current, value]);
   };
 
   const selectTiming = (value: string) => {
@@ -314,6 +370,7 @@ export function CalendarExplorer() {
   const hasCustomTimeRange = timeStart !== 0 || timeEnd !== 1440;
   const activeFilters = [month, organization, timing, source].filter((value) => value !== "all").length
     + (query ? 1 : 0)
+    + (schoolLevels.length > 0 ? 1 : 0)
     + (weekdays.length > 0 ? 1 : 0)
     + (hasCustomTimeRange ? 1 : 0);
 
@@ -357,6 +414,24 @@ export function CalendarExplorer() {
             <option value="all">All organizations</option>
             {organizations.map((name) => <option key={name} value={name}>{name}</option>)}
           </select>
+
+          <fieldset>
+            <legend>School level</legend>
+            <div className="level-picker">
+              {schoolLevelOptions.map(({ level, count }) => (
+                <button
+                  type="button"
+                  className={schoolLevels.includes(level) ? "active" : ""}
+                  aria-pressed={schoolLevels.includes(level)}
+                  onClick={() => toggleSchoolLevel(level)}
+                  key={level}
+                >
+                  <span>{level}</span><small>{count}</small>
+                </button>
+              ))}
+            </div>
+            <p className="filter-helper">Choose one or more levels. Districtwide excludes events tied to a specific school.</p>
+          </fieldset>
 
           <fieldset>
             <legend>Days of the week</legend>

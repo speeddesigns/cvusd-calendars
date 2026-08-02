@@ -44,6 +44,9 @@ test("keeps the production filters and removes the disposable starter", async ()
   ]);
 
   assert.match(explorer, /Days of the week/);
+  assert.match(explorer, /School level/);
+  assert.match(explorer, /Districtwide/);
+  assert.match(explorer, /Adult & transition/);
   assert.match(explorer, /Start time/);
   assert.match(explorer, /After 4 PM/);
   assert.match(explorer, /type="range"/);
