@@ -50,6 +50,15 @@ type Dataset = {
 
 const DATASET_URL = "/data/cvusd_events.json";
 const PAGE_SIZE = 60;
+const WEEKDAYS = [
+  { value: 0, short: "Sun", label: "Sunday" },
+  { value: 1, short: "Mon", label: "Monday" },
+  { value: 2, short: "Tue", label: "Tuesday" },
+  { value: 3, short: "Wed", label: "Wednesday" },
+  { value: 4, short: "Thu", label: "Thursday" },
+  { value: 5, short: "Fri", label: "Friday" },
+  { value: 6, short: "Sat", label: "Saturday" },
+];
 
 function Icon({ name }: { name: "arrow" | "calendar" | "clock" | "map" | "search" | "x" }) {
   const paths = {
@@ -95,6 +104,22 @@ function formatTime(value: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatMinutes(value: number) {
+  if (value === 1440) return "Midnight";
+  const hours = Math.floor(value / 60);
+  const minutes = value % 60;
+  const suffix = hours >= 12 ? "PM" : "AM";
+  const displayHour = hours % 12 || 12;
+  return `${displayHour}:${minutes.toString().padStart(2, "0")} ${suffix}`;
+}
+
+function eventStartMinutes(event: CalendarEvent) {
+  if (event.all_day) return null;
+  const match = event.start.match(/T(\d{2}):(\d{2})/);
+  if (!match) return null;
+  return Number(match[1]) * 60 + Number(match[2]);
 }
 
 function formatEventTime(event: CalendarEvent) {
@@ -168,6 +193,9 @@ export function CalendarExplorer() {
   const [month, setMonth] = useState("all");
   const [organization, setOrganization] = useState("all");
   const [timing, setTiming] = useState("all");
+  const [weekdays, setWeekdays] = useState<number[]>([]);
+  const [timeStart, setTimeStart] = useState(0);
+  const [timeEnd, setTimeEnd] = useState(1440);
   const [source, setSource] = useState("all");
   const [pagination, setPagination] = useState({ key: "", count: PAGE_SIZE });
   const [selectedEvent, setSelectedEvent] = useState<CalendarEvent | null>(null);
@@ -210,13 +238,19 @@ export function CalendarExplorer() {
       ].join(" ").toLocaleLowerCase().includes(normalizedQuery);
       const matchesMonth = month === "all" || monthKey(event) === month;
       const matchesOrganization = organization === "all" || eventOrganizations(event).includes(organization);
+      const matchesWeekday = weekdays.length === 0 || weekdays.includes(localDate(dateKey(event)).getDay());
       const matchesTiming = timing === "all" || (timing === "all-day" ? event.all_day : !event.all_day);
+      const startMinutes = eventStartMinutes(event);
+      const hasCustomTimeRange = timeStart !== 0 || timeEnd !== 1440;
+      const matchesTimeRange = !hasCustomTimeRange || (
+        startMinutes !== null && startMinutes >= timeStart && startMinutes <= timeEnd
+      );
       const matchesSource = source === "all" || event.source_calendar.feed_source === source;
-      return matchesSearch && matchesMonth && matchesOrganization && matchesTiming && matchesSource;
+      return matchesSearch && matchesMonth && matchesOrganization && matchesWeekday && matchesTiming && matchesTimeRange && matchesSource;
     });
-  }, [dataset, month, organization, query, source, timing]);
+  }, [dataset, month, organization, query, source, timeEnd, timeStart, timing, weekdays]);
 
-  const filterKey = `${query}\u0000${month}\u0000${organization}\u0000${timing}\u0000${source}`;
+  const filterKey = `${query}\u0000${month}\u0000${organization}\u0000${timing}\u0000${weekdays.join(",")}\u0000${timeStart}\u0000${timeEnd}\u0000${source}`;
   const visibleCount = pagination.key === filterKey ? pagination.count : PAGE_SIZE;
   const visibleEvents = filteredEvents.slice(0, visibleCount);
   const eventGroups = useMemo(() => {
@@ -232,7 +266,40 @@ export function CalendarExplorer() {
     setMonth("all");
     setOrganization("all");
     setTiming("all");
+    setWeekdays([]);
+    setTimeStart(0);
+    setTimeEnd(1440);
     setSource("all");
+  };
+
+  const toggleWeekday = (value: number) => {
+    setWeekdays((current) => current.includes(value)
+      ? current.filter((day) => day !== value)
+      : [...current, value].sort());
+  };
+
+  const selectTiming = (value: string) => {
+    setTiming(value);
+    if (value !== "timed") {
+      setTimeStart(0);
+      setTimeEnd(1440);
+    }
+  };
+
+  const selectTimePreset = (start: number, end: number, nextTiming = "timed") => {
+    setTimeStart(start);
+    setTimeEnd(end);
+    setTiming(nextTiming);
+  };
+
+  const updateTimeStart = (value: number) => {
+    setTimeStart(Math.min(value, timeEnd - 30));
+    setTiming("timed");
+  };
+
+  const updateTimeEnd = (value: number) => {
+    setTimeEnd(Math.max(value, timeStart + 30));
+    setTiming("timed");
   };
 
   if (loadError) {
@@ -244,7 +311,11 @@ export function CalendarExplorer() {
   }
 
   const generatedDate = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric" }).format(new Date(dataset.metadata.generated_at));
-  const activeFilters = [month, organization, timing, source].filter((value) => value !== "all").length + (query ? 1 : 0);
+  const hasCustomTimeRange = timeStart !== 0 || timeEnd !== 1440;
+  const activeFilters = [month, organization, timing, source].filter((value) => value !== "all").length
+    + (query ? 1 : 0)
+    + (weekdays.length > 0 ? 1 : 0)
+    + (hasCustomTimeRange ? 1 : 0);
 
   return (
     <main>
@@ -288,12 +359,71 @@ export function CalendarExplorer() {
           </select>
 
           <fieldset>
-            <legend>Time</legend>
-            <div className="segmented-control">
-              {[['all', 'Any'], ['all-day', 'All day'], ['timed', 'Timed']].map(([value, label]) => (
-                <button type="button" className={timing === value ? "active" : ""} onClick={() => setTiming(value)} key={value}>{label}</button>
+            <legend>Days of the week</legend>
+            <div className="weekday-picker">
+              {WEEKDAYS.map((day) => (
+                <button
+                  type="button"
+                  className={weekdays.includes(day.value) ? "active" : ""}
+                  aria-pressed={weekdays.includes(day.value)}
+                  aria-label={`Show ${day.label}s`}
+                  onClick={() => toggleWeekday(day.value)}
+                  key={day.value}
+                >
+                  {day.short}
+                </button>
               ))}
             </div>
+            <p className="filter-helper">Select one or more days. No selection shows the full week.</p>
+          </fieldset>
+
+          <fieldset>
+            <legend>Event type</legend>
+            <div className="segmented-control">
+              {[['all', 'Any'], ['all-day', 'All day'], ['timed', 'Timed']].map(([value, label]) => (
+                <button type="button" className={timing === value ? "active" : ""} onClick={() => selectTiming(value)} key={value}>{label}</button>
+              ))}
+            </div>
+          </fieldset>
+
+          <fieldset>
+            <legend>Start time</legend>
+            <div className="time-range-card">
+              <div className="time-readout" aria-live="polite">
+                <span><small>From</small>{formatMinutes(timeStart)}</span>
+                <i>→</i>
+                <span><small>To</small>{formatMinutes(timeEnd)}</span>
+              </div>
+              <div className="dual-range">
+                <span className="range-track" aria-hidden="true"><span style={{ left: `${timeStart / 14.4}%`, right: `${100 - timeEnd / 14.4}%` }} /></span>
+                <input
+                  className="range-input range-start"
+                  type="range"
+                  min="0"
+                  max="1440"
+                  step="30"
+                  value={timeStart}
+                  aria-label={`From ${formatMinutes(timeStart)}`}
+                  onChange={(event) => updateTimeStart(Number(event.target.value))}
+                />
+                <input
+                  className="range-input range-end"
+                  type="range"
+                  min="0"
+                  max="1440"
+                  step="30"
+                  value={timeEnd}
+                  aria-label={`To ${formatMinutes(timeEnd)}`}
+                  onChange={(event) => updateTimeEnd(Number(event.target.value))}
+                />
+              </div>
+              <div className="time-presets" aria-label="Time range shortcuts">
+                <button type="button" className={timing === "all" && !hasCustomTimeRange ? "active" : ""} onClick={() => selectTimePreset(0, 1440, "all")}>Any time</button>
+                <button type="button" className={timeStart === 480 && timeEnd === 960 ? "active" : ""} onClick={() => selectTimePreset(480, 960)}>8 AM–4 PM</button>
+                <button type="button" className={timeStart === 960 && timeEnd === 1440 ? "active" : ""} onClick={() => selectTimePreset(960, 1440)}>After 4 PM</button>
+              </div>
+            </div>
+            <p className="filter-helper">Custom ranges show timed events by their published start time.</p>
           </fieldset>
 
           <label className="field-label" htmlFor="source">Source format</label>
