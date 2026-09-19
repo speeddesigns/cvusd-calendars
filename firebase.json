@@ -46,6 +46,15 @@
           }
         ]
       }
+    ],
+    "rewrites": [
+      {
+        "source": "/api/feedback",
+        "run": {
+          "serviceId": "feedback-triage-service",
+          "region": "us-central1"
+        }
+      }
     ]
   }
 }
