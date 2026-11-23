@@ -1,0 +1,19 @@
+name: "AI PR Review"
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+
+permissions:
+  contents: read
+  id-token: write
+  pull-requests: write
+  issues: write
+  statuses: write
+
+jobs:
+  review:
+    uses: speeddesigns/automated-ci-cd/.github/workflows/reusable-ai-review.yml@master
+    secrets:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      PAT_GITHUB_TOKEN: ${{ secrets.PAT_GITHUB_TOKEN }}
