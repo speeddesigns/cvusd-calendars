@@ -1,0 +1,23 @@
+name: "Autonomous Bug Remediation"
+
+on:
+  issues:
+    types: [opened, labeled]
+
+permissions:
+  contents: write
+  id-token: write
+  pull-requests: write
+  issues: write
+
+jobs:
+  auto-remediate:
+    if: (contains(github.event.issue.labels.*.name, 'bug') || contains(github.event.issue.labels.*.name, 'auto-implement')) && contains(github.event.issue.labels.*.name, 'auto-triaged')
+    uses: speeddesigns/automated-ci-cd/.github/workflows/reusable-feedback-remediate.yml@master
+    with:
+      issue_id: ${{ github.event.issue.number }}
+      issue_title: ${{ github.event.issue.title }}
+      issue_body: ${{ github.event.issue.body }}
+    secrets:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      PAT_GITHUB_TOKEN: ${{ secrets.PAT_GITHUB_TOKEN }}
